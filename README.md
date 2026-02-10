@@ -8,8 +8,8 @@ Investigar a motivação por trás da mortalidade acentuada residual no período
 
 **Plano de Trabalho:**
 
-1. **Análise de Paralelos:** Traçar paralelos comparativos entre as diferentes bases de dados para identificar correlações.
-2. **Definição Metodológica e Inferência:** Consultar como definir a abordagem técnica mais adequada e, a partir disso, realizar as inferências necessárias para o encaminhamento do estudo.
+1. **Paralelos:** Traçar paralelos comparativos entre as diferentes bases de dados para identificar correlações de padrão da distribuição de mortes BR-EMS x MS (DATASUS).
+2. **Definição Metodológica e Inferência:** Consulta como definir a abordagem técnica mais adequada e, a partir disso, realizar as inferências necessárias para o encaminhamento do estudo. Busca e uso de artigos e trabalhos similares.
 
 ## Análise
 
