@@ -1,8 +1,6 @@
 # dashboard_sim
 Dashboard desenvolvido para consultas e comparativos do Sistema de Informação sobre Mortalidade (SIM)
 
-# dashboard_sim
-Dashboard desenvolvido para consultas e comparativos do Sistema de Informação sobre Mortalidade (SIM)
 
 ## **Projeto: Desenvolvimento Streamlit**
 
