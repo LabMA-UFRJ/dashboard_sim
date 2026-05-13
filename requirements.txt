@@ -1,0 +1,27 @@
+# Dependências para Análise de Mortalidade SIM-DATASUS
+# Instalar com: pip install -r requirements.txt
+
+# Core Data Processing
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Web Framework
+streamlit>=1.0.0
+
+# Visualization
+plotly>=5.0.0
+matplotlib>=3.4.0
+
+# Utilities
+python-dateutil>=2.8.0
+
+# Optional: Jupyter para desenvolvimento
+jupyter>=1.0.0
+ipython>=7.0.0
+
+# Optional: Database support
+# sqlalchemy>=1.4.0
+
+# Optional: Testing
+# pytest>=6.0.0
+# pytest-cov>=2.0.0
