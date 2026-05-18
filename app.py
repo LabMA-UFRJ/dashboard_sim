@@ -304,13 +304,8 @@ def main():
             help="Insira o caminho do arquivo CSV do SIM-DATASUS para o ano selecionado"
         )
 
-        # Button para runar o dashboard
-        run_dashboard = st.sidebar.button("Run Dashboard")
-
-        # Somente renderiza o dashboard quando o botão for clicado
-        if run_dashboard:
-            # Renderiza o dashboard
-            render_sim_dashboard(sim_data_path)
+       
+        render_sim_dashboard(sim_data_path)
         
 
     elif analysis_mode == "Intervalo de Anos":
@@ -353,6 +348,8 @@ def main():
     elif analysis_mode == "Teste":
     
         test_data_path = './test.csv'
+        
+
         render_sim_dashboard(test_data_path) if os.path.exists(test_data_path) else st.warning("Arquivo de teste não encontrado. Por favor, insira um caminho válido para visualizar o dashboard.")
     
     # Footer
