@@ -458,22 +458,17 @@ def load_sim_data_range(
     
     return dfs
 
-
-def combine_sim_data(dfs: Dict[int, pd.DataFrame]) -> pd.DataFrame:
+def combine_sim_data(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     """
     Combina múltiplos DataFrames de diferentes anos.
     
     Parameters:
-    - dfs: Dicionário {ano: DataFrame}
+    - dfs: Array de DataFrames {ano: DataFrame}
     
     Returns:
     - DataFrame combinado com coluna 'ano'
     """
-    if not dfs:
-        return pd.DataFrame()
-    
-    data_list = list(dfs.values())
-    return pd.concat(data_list, ignore_index=True)
+    return pd.concat(dfs, ignore_index=True)
 
 
 def plot_deaths_by_year(

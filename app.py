@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 
 import pandas as pd
 import streamlit as st
@@ -221,7 +222,7 @@ def render_sim_dashboard(sim_data_path: str) -> None:
     
     sim_view_type = st.sidebar.radio(
         "Tipo de Visualização",
-        ["Resumo Geral", "Por Categoria", "Por Idade", "Comparações", "Detalhes"]
+        ["Resumo Geral", "Por Idade", "Detalhes"]
     )
     
     if sim_view_type == "Resumo Geral":
@@ -230,122 +231,38 @@ def render_sim_dashboard(sim_data_path: str) -> None:
         st.markdown("---")
         plot_all_categories(sim_data)
     
-    elif sim_view_type == "Por Categoria":
-        render_category_view(sim_data)
-    
     elif sim_view_type == "Por Idade":
         render_age_view(sim_data)
-    
-    elif sim_view_type == "Comparações":
-        render_comparison_view(sim_data)
     
     elif sim_view_type == "Detalhes":
         render_details_view(sim_data)
 
-
-def render_comparative_analysis() -> None:
+def render_sim_dashboard_by_data(data: pd.DataFrame) -> None:
     """
-    Renderiza análise comparativa entre múltiplos anos (2004-2022).
+    Renderiza o dashboard usando um DataFrame já carregado.
+    
+    Parameters:
+    - data: DataFrame com dados de óbitos
     """
-    st.subheader("📊 Análise Comparativa por Ano (2004-2022)")
+    st.success(f"✅ Dados prontos para análise: {len(data):,} registros")
     
-    # Configurações
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        year_start = st.slider("Ano Inicial", min_value=2004, max_value=2022, value=2010)
-    
-    with col2:
-        year_end = st.slider("Ano Final", min_value=2004, max_value=2022, value=2022)
-    
-    if year_start > year_end:
-        st.error("❌ Ano inicial não pode ser maior que ano final")
-        return
-    
-    base_path = "//Projetos2/Wrk/SIM-DATASUS/MICRODADOS"
-    
-    # Carrega dados para o intervalo
-    st.info(f"⏳ Carregando dados de {year_start} a {year_end}...")
-    dfs = load_sim_data_range(base_path, year_start, year_end)
-    
-    if not dfs:
-        st.error("❌ Nenhum dado disponível para o período selecionado")
-        return
-    
-    # Tipo de análise comparativa
-    comparative_type = st.radio(
-        "Tipo de Análise Comparativa",
-        [
-            "Evolução Geral de Óbitos",
-            "Evolução por Categoria",
-            "Heatmap de Categoria",
-            "Distribuição Etária",
-            "Estatísticas Gerais"
-        ]
+    sim_view_type = st.sidebar.radio(
+        "Tipo de Visualização",
+        ["Resumo Geral", "Por Idade", "Detalhes"],
+        key="view_type_by_data"
     )
     
-    st.markdown("---")
+    if sim_view_type == "Resumo Geral":
+        st.subheader("📈 Resumo Geral de Óbitos")
+        render_summary_metrics(data)
+        st.markdown("---")
+        plot_all_categories(data)
     
-    if comparative_type == "Evolução Geral de Óbitos":
-        st.markdown("**Análise**: Tendência geral de óbitos ao longo dos anos")
-        plot_deaths_by_year(dfs)
+    elif sim_view_type == "Por Idade":
+        render_age_view(data)
     
-    elif comparative_type == "Evolução por Categoria":
-        st.markdown("**Análise**: Como cada subcategoria evoluiu ao longo dos anos")
-        
-        category = st.selectbox(
-            "Selecione a categoria",
-            ["raca_cor", "sexo", "escolaridade", "estado_civil"]
-        )
-        
-        plot_category_comparison_by_year(dfs, category)
-    
-    elif comparative_type == "Heatmap de Categoria":
-        st.markdown("**Análise**: Mapa de calor mostrando intensidade de óbitos por categoria e ano")
-        
-        category = st.selectbox(
-            "Selecione a categoria",
-            ["raca_cor", "sexo", "escolaridade", "estado_civil"],
-            key="heatmap_category"
-        )
-        
-        plot_category_heatmap_by_year(dfs, category)
-    
-    elif comparative_type == "Distribuição Etária":
-        st.markdown("**Análise**: Como a distribuição por idade mudou entre anos")
-        plot_age_distribution_by_year(dfs)
-    
-    elif comparative_type == "Estatísticas Gerais":
-        st.markdown("**Análise**: Resumo estatístico completo por ano")
-        
-        # Seleciona se quer detalhar por categoria
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            include_category = st.checkbox("Detalhar por categoria?")
-        
-        with col2:
-            detail_category = None
-            if include_category:
-                detail_category = st.selectbox(
-                    "Categoria para detalhe",
-                    ["raca_cor", "sexo", "escolaridade", "estado_civil"],
-                    key="stats_category"
-                )
-        
-        stats_df = get_statistics_by_year(dfs, detail_category if include_category else None)
-        
-        st.dataframe(stats_df, use_container_width=True)
-        
-        # Download CSV
-        csv = stats_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Baixar Estatísticas (CSV)",
-            data=csv,
-            file_name=f"estatisticas_sim_{year_start}_{year_end}.csv",
-            mime="text/csv"
-        )
-
+    elif sim_view_type == "Detalhes":
+        render_details_view(data)
 
 # ============================================================================
 # MAIN - ANÁLISE DE MORTALIDADE SIM-DATASUS
@@ -363,25 +280,80 @@ def main():
     # Seleção de modo de análise
     analysis_mode = st.sidebar.radio(
         "Modo de Análise",
-        ["Ano Único", "Comparativo (2004-2022)"]
+        ["Teste", "Ano Único", "Intervalo de Anos"]
     )
     
     st.markdown("---")
+
     
+
     if analysis_mode == "Ano Único":
         # Input do caminho do arquivo
+        sim_data_year = st.sidebar.number_input(
+            "Ano dos dados",
+            min_value=2000,
+            max_value=2022,
+            value=2021,
+            step=1,
+            help="Selecione o ano dos dados do SIM-DATASUS que deseja analisar"
+        )
+
         sim_data_path = st.sidebar.text_input(
             "Caminho do arquivo SIM-DATASUS",
-            value="//Projetos2/Wrk/SIM-DATASUS/MICRODADOS/SIM-DATASUS-2020.csv",
-            help="Insira o caminho completo do arquivo CSV com dados de mortalidade"
+            value=f'//Projetos2/Wrk/SIM-DATASUS/MICRODADOS/SIM-DATASUS-{sim_data_year}.csv',
+            help="Insira o caminho do arquivo CSV do SIM-DATASUS para o ano selecionado"
         )
+
+        # Button para runar o dashboard
+        run_dashboard = st.sidebar.button("Run Dashboard")
+
+        # Somente renderiza o dashboard quando o botão for clicado
+        if run_dashboard:
+            # Renderiza o dashboard
+            render_sim_dashboard(sim_data_path)
         
-        # Renderiza o dashboard
-        render_sim_dashboard(sim_data_path)
+
+    elif analysis_mode == "Intervalo de Anos":
+        # Inputs para intervalo de anos
+        start_year = st.sidebar.number_input(
+            "Ano Inicial",
+            min_value=2000,
+            max_value=2022,
+            value=2020,
+            step=1,
+            help="Selecione o ano inicial do intervalo de dados do SIM-DATASUS"
+        )
+
+        end_year = st.sidebar.number_input(
+            "Ano Final",
+            min_value=2000,
+            max_value=2022,
+            value=2021,
+            step=1,
+            help="Selecione o ano final do intervalo de dados do SIM-DATASUS"
+        )
+
+        if start_year > end_year:
+            st.error("O ano inicial deve ser menor ou igual ao ano final.")
+        else:
+            sim_data_paths = [
+                f'//Projetos2/Wrk/SIM-DATASUS/MICRODADOS/SIM-DATASUS-{year}.csv'
+                for year in range(start_year, end_year + 1)
+            ]
+            
+            # Carrega e combina os dados do intervalo de anos
+            combined_data = combine_sim_data([pd.read_csv(path) for path in sim_data_paths])
+            
+            if combined_data is not None:
+                st.success(f"✅ Dados combinados para o período {start_year}-{end_year}: {len(combined_data):,} registros")
+                render_sim_dashboard_by_data(combined_data)
+            else:
+                st.error("❌ Erro ao carregar ou combinar os dados do intervalo de anos.")
+        
+    elif analysis_mode == "Teste":
     
-    else:  # Comparativo
-        # Renderiza análise comparativa
-        render_comparative_analysis()
+        test_data_path = './test.csv'
+        render_sim_dashboard(test_data_path) if os.path.exists(test_data_path) else st.warning("Arquivo de teste não encontrado. Por favor, insira um caminho válido para visualizar o dashboard.")
     
     # Footer
     st.markdown("---")
