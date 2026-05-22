@@ -9,13 +9,12 @@ Desenvolvimento rápido de um Streamlit para consumo de dados de interesse do La
 
 **Plano de Trabalho:**
 
-1. **Engenharia de Dados:** Realizar o processo completo de extração dos dados das bases do LabMA, DataSUS e IBGE.
+1. **Engenharia de Dados:** Realizar o processo completo de extração dos dados das bases do LabMA, DataSUS e IBGE. OK
 
 
 **Dúvidas:**
-1. Consumo via API (SIM)?
-2. Conexão com a Tábua?
-
+1. Consumo via API (SIM)? R: Apenas baixar os dados referentes por recortes (limite de 100MB)
+2. 
 **Links:**
 
 1. Website: https://basedosdados.org/dataset/br-ms-sim
