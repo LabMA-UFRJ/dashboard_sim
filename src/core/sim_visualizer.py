@@ -8,6 +8,8 @@ categories including race/color, marital status, education level, age, and sex.
 from __future__ import annotations
 
 import pandas as pd
+from plotly import data
+from plotly import data
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
@@ -204,6 +206,62 @@ def plot_deaths_by_age(
     
     return fig
 
+def plot_calculated_mx_by_age(
+    death_data: pd.DataFrame,
+    population_data: pd.DataFrame,
+    title: str = 'Taxa de Mortalidade por Idade',
+    use_streamlit: bool = True,
+    color: str = '#1f77b4'
+) -> go.Figure:
+    """
+    Create a line chart showing calculated mortality rates by age.
+    
+    Parameters:
+    - death_data: Pandas DataFrame containing mortality data with 'idade' column
+    - population_data: Pandas DataFrame containing population data with 'idade' column
+    - title: Title for the chart
+    - use_streamlit: Whether to display using st.plotly_chart (True) or return figure (False)
+    - color: Color for the line
+    
+    Returns:
+    - Plotly Figure object
+    """
+    # Placeholder implementation - replace with actual calculation logic
+    df_death_filtered = death_data.groupby('idade').size().reset_index(name='total_obitos')
+    df_population_filtered = population_data.groupby('idade').size().reset_index(name='population')
+
+    # Merge the two DataFrames on 'idade', renaming columns to avoid conflicts
+    df_death_filtered.rename(columns={'idade': 'idade_death'}, inplace=True)
+    df_population_filtered.rename(columns={'idade': 'idade_population'}, inplace=True)
+    df_filtered = pd.merge(df_death_filtered, df_population_filtered, left_on='idade_death', right_on='idade_population', how='inner')
+
+    # Calculate mortality rate by age (D/N)
+    df_filtered['mortality_rate'] = df_filtered['total_obitos'] / df_filtered['population']
+
+
+
+    
+    fig = px.line(
+        df_filtered,
+        x='idade',
+        y='mortality_rate',
+        title=title,
+        markers=True,
+        labels={'idade': 'Idade', 'mortality_rate': 'Taxa de Mortalidade'}
+    )
+    
+    fig.update_traces(line=dict(color=color, width=2))
+    fig.update_layout(
+        height=400,
+        hovermode='x unified',
+        xaxis_title='Idade',
+        yaxis_title='Taxa de Mortalidade'
+    )
+    
+    if use_streamlit:
+        st.plotly_chart(fig, use_container_width=True)
+    
+    return fig
 
 def plot_deaths_by_subcategory_and_age(
     data: pd.DataFrame,

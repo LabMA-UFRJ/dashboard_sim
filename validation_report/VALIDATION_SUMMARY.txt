@@ -1,0 +1,43 @@
+================================================================================
+MORTALITY ANALYSIS VALIDATION REPORT
+================================================================================
+
+RAW DATA SUMMARY
+--------------------------------------------------------------------------------
+Total death records: 1,556,824
+Population records: 100
+Age range (deaths): 0 - 125
+Age range (population): 1 - 100
+
+GENERATED DATA SUMMARY
+--------------------------------------------------------------------------------
+Deaths aggregated: 1,556,824
+Age groups processed: 122
+Sex categories: Feminino, Masculino
+Race categories: Amarela, Branca, Indígena, Parda, Preta
+mx values calculated: 100
+
+VALIDATION RESULTS
+--------------------------------------------------------------------------------
+                     Test               Raw_Data                    Generated Status   Difference
+       Total Deaths Count              1,556,824                    1,556,824 ✓ PASS 0.000000e+00
+Deaths by Sex - Masculino                874,167                      874,167 ✓ PASS 0.000000e+00
+ Deaths by Sex - Feminino                682,027                      682,027 ✓ PASS 0.000000e+00
+  Deaths by Race - Branca                764,700                      764,700 ✓ PASS 0.000000e+00
+   Deaths by Race - Preta                132,076                      132,076 ✓ PASS 0.000000e+00
+ Deaths by Race - Amarela                  9,479                        9,479 ✓ PASS 0.000000e+00
+   Deaths by Race - Parda                604,570                      604,570 ✓ PASS 0.000000e+00
+Deaths by Race - Indígena                  5,363                        5,363 ✓ PASS 0.000000e+00
+  mx Calculation Accuracy mx = deaths/population           Max diff: 9.87e-17 ✓ PASS 9.866240e-17
+     mx Value Range [0,1]             Range: 0-1 Min: 0.000165, Max: 0.254078 ✓ PASS 0.000000e+00
+    Age Range Consistency                  0-125                        0-125 ✗ FAIL 1.000000e+00
+
+SUMMARY
+--------------------------------------------------------------------------------
+Tests Passed: 10/11
+Success Rate: 90.9%
+
+✗ 1 validation(s) failed - Review required
+
+  FAILED: Age Range Consistency
+    Raw: 0-125 | Generated: 0-125
