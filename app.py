@@ -1,420 +1,319 @@
 from __future__ import annotations
 import os
-
 import pandas as pd
 import streamlit as st
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
-import plotly.express as px
 import plotly.graph_objects as go
 
-# ============================================================================
-# IMPORTAÇÕES RELACIONADAS AO SIM-DATASUS (main.ipynb)
-# ============================================================================
-from src.core.sim_visualizer import (
-    plot_deaths_by_category,
-    plot_deaths_by_age,
-    plot_deaths_by_subcategory_and_age,
-    plot_all_categories,
-    get_category_statistics,
-    compare_categories_distribution,
-    load_sim_data_by_year,
-    load_sim_data_range,
-    combine_sim_data,
-    plot_deaths_by_year,
-    plot_category_comparison_by_year,
-    plot_category_heatmap_by_year,
-    plot_age_distribution_by_year,
-    get_statistics_by_year,
-    DICTIONARY_COLORS,
-    DICTIONARY_LABELS,
-    total_deaths_by_category,
-)
-
-# ============================================================================
-# IMPORTAÇÕES NÃO RELACIONADAS AO MAIN.IPYNB (COMENTADAS)
-# ============================================================================
-# from main import config, load_data
-# from src.core.visualizer import InsuranceVisualizer
- 
 st.set_page_config(
     layout="wide",
     page_title="Análise de Mortalidade SIM-DATASUS",
-    page_icon="�",
+    page_icon="📊",
 )
+
 # ============================================================================
-# FUNÇÕES PARA CARREGAR DADOS PRÉ-CALCULADOS
+# CARREGAMENTO DE DADOS MX
 # ============================================================================
 
-def discover_available_analyses() -> Dict[str, List[str]]:
-    """
-    Descobre análises disponíveis na estrutura output/{population_source}/{year}/
-    
-    Returns:
-    - Dicionário: {população_source: [anos]}
-    """
-    output_dir = Path("./output")
-    analyses = {}
-    
-    if not output_dir.exists():
-        return analyses
-    
-    for pop_source_dir in output_dir.iterdir():
-        if pop_source_dir.is_dir():
-            years = []
-            for year_dir in pop_source_dir.iterdir():
-                if year_dir.is_dir() and year_dir.name.isdigit():
-                    years.append(year_dir.name)
-            if years:
-                analyses[pop_source_dir.name] = sorted(years, reverse=True)
-    
-    return analyses
+@st.cache_data
+def load_mx_files():
+    """Carrega todos os arquivos de mx dos dados raw."""
+    raw_data_dir = Path("./data/raw")
+    mx_files = {}
+
+    if raw_data_dir.exists():
+        for file in raw_data_dir.glob("mx_*.csv"):
+            name = file.stem.replace("mx_", "").replace("_todos_anos", "")
+            try:
+                # utf-8-sig remove BOM automaticamente
+                df = pd.read_csv(file, encoding='utf-8-sig', on_bad_lines='skip')
+                df.columns = df.columns.str.strip()
+            except Exception as e:
+                st.warning(f"Erro ao ler {name}: {e}")
+                continue
+
+            mx_files[name] = df
+
+    return mx_files
 
 
-def get_analysis_path(population_source: str, year: str) -> Path:
-    """Retorna o caminho base da análise para uma população e ano específicos."""
-    return Path("./output") / population_source / year
+def get_years_available(mx_data: Dict[str, pd.DataFrame]) -> list:
+    """Extrai todos os anos disponíveis dos dados mx."""
+    years = set()
+    for df in mx_data.values():
+        if 'ano' in df.columns:
+            years.update(df['ano'].unique())
+    return sorted(years, reverse=True)
 
 
-def load_deaths_data(population_source: str, year: str) -> Dict[str, pd.DataFrame]:
-    """
-    Carrega todos os arquivos de morte da análise.
+def get_mx_by_year(mx_data: Dict[str, pd.DataFrame], year: int) -> Dict[str, pd.DataFrame]:
+    """Filtra dados de mx para um ano específico."""
+    mx_by_year = {}
+    for name, df in mx_data.items():
+        if 'ano' in df.columns:
+            filtered = df[df['ano'] == year].copy()
+            if not filtered.empty:
+                mx_by_year[name] = filtered
+    return mx_by_year
+
+
+# ============================================================================
+# FUNÇÕES DE ESTATÍSTICAS
+# ============================================================================
+
+def calculate_statistics(df: pd.DataFrame) -> Dict:
+    """Calcula estatísticas para um dataframe de mx."""
+    if 'Mx' not in df.columns:
+        return {}
     
-    Returns:
-    - Dicionário com DataFrames: {'deaths_by_age', 'deaths_by_sex', ...}
-    """
-    base_path = get_analysis_path(population_source, year) / "deaths"
-    deaths_data = {}
+    mx_values = df['Mx'].dropna()
     
-    if not base_path.exists():
-        return deaths_data
-    
-    file_map = {
-        '01_deaths_by_age': 'deaths_by_age',
-        '02_deaths_by_age_and_sex': 'deaths_by_sex',
-        '03_deaths_by_age_and_race': 'deaths_by_race',
-        '04_deaths_by_age_and_education': 'deaths_by_education',
-        '05_deaths_by_age_and_marital_status': 'deaths_by_marital',
+    stats = {
+        'Média': mx_values.mean(),
+        'Mediana': mx_values.median(),
+        'Mínimo': mx_values.min(),
+        'Máximo': mx_values.max(),
+        'Desvio Padrão': mx_values.std(),
+        'Total de Óbitos': df['obitos'].sum() if 'obitos' in df.columns else 0,
+        'Total de Exposição': df['exposicao'].sum() if 'exposicao' in df.columns else 0,
     }
     
-    for file_prefix, key in file_map.items():
-        # Find file with this prefix
-        matching_files = list(base_path.glob(f"{file_prefix}_*.csv"))
-        if matching_files:
-            deaths_data[key] = pd.read_csv(matching_files[0])
-    
-    return deaths_data
-
-
-def load_mx_data(population_source: str, year: str) -> Dict[str, pd.DataFrame]:
-    """
-    Carrega todos os arquivos de taxa de mortalidade (mx).
-    
-    Returns:
-    - Dicionário com DataFrames: {'mx_total', 'mx_by_sex_masculino', ...}
-    """
-    base_path = get_analysis_path(population_source, year) / "mx"
-    mx_data = {}
-    
-    if not base_path.exists():
-        return mx_data
-    
-    # Load all mx files
-    for file in base_path.glob("*.csv"):
-        # Extract meaningful name from filename
-        name = file.stem.split('_SIM-DATASUS')[0]  # Remove source suffix
-        mx_data[name] = pd.read_csv(file)
-    
-    return mx_data
-
-
-def load_summary_data(population_source: str, year: str) -> Optional[pd.DataFrame]:
-    """Carrega dados de sumário estatístico."""
-    base_path = get_analysis_path(population_source, year) / "summary"
-    
-    if not base_path.exists():
-        return None
-    
-    files = list(base_path.glob("*.csv"))
-    if files:
-        return pd.read_csv(files[0])
-    
-    return None
+    return stats
 
 
 # ============================================================================
-# FUNÇÕES DE VISUALIZAÇÃO PARA DADOS PRÉ-CALCULADOS
+# FUNÇÕES DE VISUALIZAÇÃO
 # ============================================================================
 
-def plot_deaths_chart(df: pd.DataFrame, title: str = "Óbitos por Idade") -> None:
-    """Plota gráfico de óbitos por idade."""
-    if 'idade' not in df.columns or 'deaths' not in df.columns:
-        st.warning("Formato de dados inválido para este gráfico")
-        return
-    
-    fig = px.line(
-        df,
-        x='idade',
-        y='deaths',
-        title=title,
-        markers=True,
-        labels={'idade': 'Idade', 'deaths': 'Total de Óbitos'}
-    )
-    
-    fig.update_layout(height=500, hovermode='x unified')
-    st.plotly_chart(fig, use_container_width=True)
+_ORDEM_ESCOLARIDADE = [
+    "SEM ESCOLARIDADE",
+    "FUNDAMENTAL INCOMPLETO",
+    "FUNDAMENTAL COMPLETO",
+    "MEDIO COMPLETO",
+    "SUPERIOR INCOMPLETO",
+    "SUPERIOR COMPLETO",
+]
+
+_CORES_SEXO = {'FEMININO': '#FF6B6B', 'MASCULINO': '#4ECDC4'}
 
 
-def plot_deaths_by_category_chart(df: pd.DataFrame, title: str = "Óbitos por Categoria") -> None:
-    """Plota gráfico de óbitos por categorias (sexo, raça, etc)."""
-    if 'idade' not in df.columns:
-        st.warning("Formato de dados inválido")
-        return
-    
-    # Get all columns except 'idade'
-    category_cols = [col for col in df.columns if col != 'idade']
-    
+def plot_mx_idade(df: pd.DataFrame, year: int) -> None:
+    """Mx por Idade — linha em escala log, x de 16 a 100."""
+    plot_data = df[df['Mx'] > 0].sort_values('idade_num')
+
     fig = go.Figure()
-    
-    for col in category_cols:
-        fig.add_trace(go.Scatter(
-            x=df['idade'],
-            y=df[col],
-            mode='lines+markers',
-            name=col
-        ))
-    
+    fig.add_trace(go.Scatter(
+        x=plot_data['idade_num'],
+        y=plot_data['Mx'],
+        mode='lines',
+        line=dict(color='blue', width=1.5),
+        hovertemplate='Idade: %{x}<br>Mx: %{y:.6f}<extra></extra>',
+    ))
     fig.update_layout(
-        title=title,
-        xaxis_title='Idade',
-        yaxis_title='Óbitos',
-        height=500,
-        hovermode='x unified'
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def plot_mx_chart(df: pd.DataFrame, title: str = "Taxa de Mortalidade (mx)") -> None:
-    """Plota gráfico de taxa de mortalidade."""
-    if 'idade' not in df.columns or 'mx' not in df.columns:
-        st.warning("Formato de dados inválido para mx")
-        return
-    
-    fig = px.line(
-        df,
-        x='idade',
-        y='mx',
-        title=title,
-        markers=True,
-        labels={'idade': 'Idade', 'mx': 'Taxa de Mortalidade (mx)'}
-    )
-    
-    fig.update_layout(height=500, hovermode='x unified')
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def plot_mx_comparison_chart(mx_data: Dict[str, pd.DataFrame], title: str = "Comparação de mx") -> None:
-    """Plota comparação de taxas de mortalidade por subcategorias."""
-    fig = go.Figure()
-    
-    for name, df in mx_data.items():
-        if 'idade' in df.columns and 'mx' in df.columns:
-            fig.add_trace(go.Scatter(
-                x=df['idade'],
-                y=df['mx'],
-                mode='lines+markers',
-                name=name.replace('08_mx_by_race_', '').replace('07_mx_by_sex_', '').capitalize()
-            ))
-    
-    fig.update_layout(
-        title=title,
-        xaxis_title='Idade',
-        yaxis_title='Taxa de Mortalidade (mx)',
+        title=f'Taxa Central de Mortalidade (Mx) por Idade - Brasil {year}',
+        xaxis=dict(title='Idade (anos)', range=[16, 100]),
+        yaxis=dict(title='Mx (escala log)', type='log'),
         height=500,
         hovermode='x unified',
-        legend=dict(orientation='v', yanchor='top', y=0.99, xanchor='left', x=0.01)
     )
-    
     st.plotly_chart(fig, use_container_width=True)
 
 
-def display_summary_table(summary_df: pd.DataFrame) -> None:
-    """Exibe tabela de sumário estatístico."""
-    st.subheader("📊 Sumário Estatístico")
-    
-    # Formata números para melhor legibilidade
-    display_df = summary_df.copy()
-    numeric_cols = display_df.select_dtypes(include=['float64', 'int64']).columns
-    
-    for col in numeric_cols:
-        if 'percent' in col.lower():
-            display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}%")
-        elif 'deaths' in col.lower() or col == 'Total_Deaths':
-            display_df[col] = display_df[col].apply(lambda x: f"{int(x):,}")
-        else:
-            display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}")
-    
-    st.dataframe(display_df, use_container_width=True)
-# ============================================================================
-# FUNÇÕES PARA VISUALIZAR DADOS PRÉ-CALCULADOS
-# ============================================================================
+def plot_mx_sexo(df: pd.DataFrame, year: int) -> None:
+    """Mx por Sexo — barras apenas MASCULINO/FEMININO com valores anotados."""
+    plot_data = df[df['sexo'].isin(['MASCULINO', 'FEMININO'])].copy()
+    plot_data['cor'] = plot_data['sexo'].map(_CORES_SEXO)
 
-def render_deaths_overview(deaths_data: Dict[str, pd.DataFrame]) -> None:
-    """Renderiza visão geral de óbitos."""
-    st.subheader("💀 Óbitos por Demográfico")
-    
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Idade",
-        "Sexo",
-        "Raça/Cor",
-        "Escolaridade",
-        "Estado Civil"
-    ])
-    
-    with tab1:
-        if 'deaths_by_age' in deaths_data:
-            plot_deaths_chart(deaths_data['deaths_by_age'], "Total de Óbitos por Idade")
-    
-    with tab2:
-        if 'deaths_by_sex' in deaths_data:
-            plot_deaths_by_category_chart(deaths_data['deaths_by_sex'], "Óbitos por Sexo e Idade")
-    
-    with tab3:
-        if 'deaths_by_race' in deaths_data:
-            plot_deaths_by_category_chart(deaths_data['deaths_by_race'], "Óbitos por Raça/Cor e Idade")
-    
-    with tab4:
-        if 'deaths_by_education' in deaths_data:
-            plot_deaths_by_category_chart(deaths_data['deaths_by_education'], "Óbitos por Escolaridade e Idade")
-    
-    with tab5:
-        if 'deaths_by_marital' in deaths_data:
-            plot_deaths_by_category_chart(deaths_data['deaths_by_marital'], "Óbitos por Estado Civil e Idade")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=plot_data['sexo'],
+        y=plot_data['Mx'],
+        marker_color=plot_data['cor'],
+        text=plot_data['Mx'].apply(lambda v: f'{v:.5f}'),
+        textposition='outside',
+        hovertemplate='%{x}<br>Mx: %{y:.6f}<extra></extra>',
+    ))
+    fig.update_layout(
+        title=f'Taxa Central de Mortalidade (Mx) por Sexo - Brasil {year}',
+        xaxis_title='Sexo',
+        yaxis_title='Mx',
+        height=450,
+        showlegend=False,
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 
-def render_mx_overview(mx_data: Dict[str, pd.DataFrame]) -> None:
-    """Renderiza visão geral de taxas de mortalidade."""
-    st.subheader("📈 Taxa de Mortalidade (mx)")
-    
-    # Separate mx data by type
-    total_mx = {k: v for k, v in mx_data.items() if 'total' in k}
-    sex_mx = {k: v for k, v in mx_data.items() if 'sex' in k}
-    race_mx = {k: v for k, v in mx_data.items() if 'race' in k}
-    
-    tab1, tab2, tab3 = st.tabs(["Total", "Por Sexo", "Por Raça/Cor"])
-    
-    with tab1:
-        if total_mx:
-            first_key = list(total_mx.keys())[0]
-            plot_mx_chart(total_mx[first_key], "Taxa de Mortalidade - População Total")
-    
-    with tab2:
-        if sex_mx:
-            plot_mx_comparison_chart(sex_mx, "Comparação de mx por Sexo")
-    
-    with tab3:
-        if race_mx:
-            plot_mx_comparison_chart(race_mx, "Comparação de mx por Raça/Cor")
+def plot_mx_uf(df: pd.DataFrame, year: int) -> None:
+    """Mx por UF — barras horizontais ordenadas crescente."""
+    plot_data = df.sort_values('Mx', ascending=True)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=plot_data['uf'],
+        x=plot_data['Mx'],
+        orientation='h',
+        marker_color='steelblue',
+        hovertemplate='%{y}<br>Mx: %{x:.6f}<extra></extra>',
+    ))
+    fig.update_layout(
+        title=f'Taxa Central de Mortalidade (Mx) por UF - Brasil {year}',
+        xaxis_title='Mx',
+        yaxis_title='',
+        height=max(500, len(plot_data) * 22),
+        hovermode='y unified',
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 
-def render_analysis_dashboard(population_source: str, year: str) -> None:
-    """Renderiza o dashboard completo com dados pré-calculados."""
-    st.success(f"✅ Análise carregada: {population_source} ({year})")
-    
-    # Load all data
-    deaths_data = load_deaths_data(population_source, year)
-    mx_data = load_mx_data(population_source, year)
-    summary_data = load_summary_data(population_source, year)
-    
-    if not deaths_data and not mx_data:
-        st.error("❌ Nenhum dado encontrado para esta análise")
-        return
-    
-    # Tabs for different views
-    tab_deaths, tab_mx, tab_summary = st.tabs([
-        "💀 Óbitos",
-        "📈 Mortalidade (mx)",
-        "📊 Sumário"
-    ])
-    
-    with tab_deaths:
-        if deaths_data:
-            render_deaths_overview(deaths_data)
-        else:
-            st.info("Dados de óbitos não disponíveis")
-    
-    with tab_mx:
-        if mx_data:
-            render_mx_overview(mx_data)
-        else:
-            st.info("Dados de mortalidade não disponíveis")
-    
-    with tab_summary:
-        if summary_data is not None:
-            display_summary_table(summary_data)
-        else:
-            st.info("Dados de sumário não disponíveis")
+def plot_mx_estado_civil(df: pd.DataFrame, year: int) -> None:
+    """Mx por Estado Civil — barras ordenadas decrescente, sem NÃO INFORMADO."""
+    plot_data = df[df['estado_civil'] != 'NÃO INFORMADO'].sort_values('Mx', ascending=False)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=plot_data['estado_civil'],
+        y=plot_data['Mx'],
+        marker_color='coral',
+        hovertemplate='%{x}<br>Mx: %{y:.6f}<extra></extra>',
+    ))
+    fig.update_layout(
+        title=f'Taxa Central de Mortalidade (Mx) por Estado Civil - Brasil {year}',
+        xaxis=dict(title='', tickangle=-45),
+        yaxis_title='Mx',
+        height=500,
+        showlegend=False,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def plot_mx_escolaridade(df: pd.DataFrame, year: int) -> None:
+    """Mx por Escolaridade — barras na ordem educacional crescente."""
+    plot_data = df[df['escolaridade'].isin(_ORDEM_ESCOLARIDADE)].copy()
+    plot_data['ordem'] = plot_data['escolaridade'].map(
+        {v: i for i, v in enumerate(_ORDEM_ESCOLARIDADE)}
+    )
+    plot_data = plot_data.sort_values('ordem')
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=plot_data['escolaridade'],
+        y=plot_data['Mx'],
+        marker_color='mediumseagreen',
+        hovertemplate='%{x}<br>Mx: %{y:.6f}<extra></extra>',
+    ))
+    fig.update_layout(
+        title=f'Taxa Central de Mortalidade (Mx) por Escolaridade - Brasil {year}',
+        xaxis=dict(title='', tickangle=-45),
+        yaxis_title='Mx',
+        height=500,
+        showlegend=False,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
 
 # ============================================================================
-# MAIN - ANÁLISE PRÉ-CALCULADA DE MORTALIDADE
+# MAIN
 # ============================================================================
 
 def main():
-    """Função principal que exibe análises de mortalidade pré-calculadas."""
+    st.title("📊 Análise de Mortalidade - Taxas (Mx) por Ano")
+    st.markdown("Visualização simplificada das taxas de mortalidade (mx) do SIM-DATASUS por ano")
     
-    st.title("📊 Análise de Mortalidade - SIM-DATASUS")
-    st.markdown("Visualização de análises de óbitos com dados pré-calculados")
+    # Carregar dados
+    mx_data = load_mx_files()
     
-    # Descobrir análises disponíveis
-    analyses = discover_available_analyses()
-    
-    if not analyses:
-        st.warning("⚠️ Nenhuma análise disponível em ./output/")
-        st.info("""
-        Para gerar análises, execute primeiro:
-        ```bash
-        python calculate_mortality_analysis.py
-        ```
-        """)
+    if not mx_data:
+        st.error("❌ Nenhum arquivo de mx encontrado em data/raw/")
         return
     
-    # Sidebar para seleção
-    st.sidebar.header("⚙️ Seleção de Análise")
-    
-    # Selecionar população
-    population_options = list(analyses.keys())
-    selected_population = st.sidebar.selectbox(
-        "📊 População",
-        population_options,
-        help="Selecione a fonte de dados populacionais"
-    )
-    
     # Selecionar ano
-    year_options = analyses[selected_population]
-    selected_year = st.sidebar.selectbox(
-        "📅 Ano",
-        year_options,
-        help="Selecione o ano da análise"
+    available_years = get_years_available(mx_data)
+    selected_year: Optional[int] = st.sidebar.selectbox(
+        "📅 Selecione o Ano",
+        available_years,
+        help="Escolha o ano para análise"
     )
+
+    if selected_year is None:
+        st.info("Nenhum ano disponível.")
+        return
+
+    # Filtrar dados para o ano selecionado
+    mx_by_year = get_mx_by_year(mx_data, selected_year)
     
+    if not mx_by_year:
+        st.error(f"❌ Nenhum dado disponível para o ano {selected_year}")
+        return
+    
+    st.success(f"✅ Dados carregados para o ano {selected_year}")
     st.markdown("---")
     
-    # Renderizar análise selecionada
-    render_analysis_dashboard(selected_population, selected_year)
+    # Abas para diferentes visualizações
+    tab1, tab2, tab3 = st.tabs(["📈 Visualizações", "📊 Estatísticas", "📋 Dados"])
     
-    # Footer
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
+    with tab1:
+        st.subheader(f"Visualizações - {selected_year}")
+        
+        # Mostrar dados por tipo
+        for category_name, df in mx_by_year.items():
+            with st.expander(f"📊 {category_name.upper().replace('_', ' ')}", expanded=True):
+                if 'idade_num' in df.columns:
+                    plot_mx_idade(df, selected_year)
+                elif 'sexo' in df.columns:
+                    plot_mx_sexo(df, selected_year)
+                elif 'escolaridade' in df.columns:
+                    plot_mx_escolaridade(df, selected_year)
+                elif 'estado_civil' in df.columns:
+                    plot_mx_estado_civil(df, selected_year)
+                elif 'uf' in df.columns:
+                    plot_mx_uf(df, selected_year)
     
-    with col1:
-        st.markdown(f"**População:** {selected_population}")
+    with tab2:
+        st.subheader(f"Estatísticas por Categoria - {selected_year}")
+        
+        # Mostrar estatísticas por categoria
+        for category_name, df in mx_by_year.items():
+            stats = calculate_statistics(df)
+            
+            if stats:
+                with st.expander(f"📈 {category_name.upper().replace('_', ' ')}", expanded=True):
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Média Mx", f"{stats['Média']:.6f}")
+                    with col2:
+                        st.metric("Mediana Mx", f"{stats['Mediana']:.6f}")
+                    with col3:
+                        st.metric("Mínimo Mx", f"{stats['Mínimo']:.6f}")
+                    with col4:
+                        st.metric("Máximo Mx", f"{stats['Máximo']:.6f}")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Desvio Padrão", f"{stats['Desvio Padrão']:.6f}")
+                    with col2:
+                        st.metric("Total Óbitos", f"{int(stats['Total de Óbitos']):,}")
+                    with col3:
+                        st.metric("Total Exposição", f"{int(stats['Total de Exposição']):,}")
     
-    with col2:
-        st.markdown(f"**Ano:** {selected_year}")
-    
-    with col3:
-        st.markdown(f"**Atualizado:** {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}")
+    with tab3:
+        st.subheader(f"Dados Brutos - {selected_year}")
+        
+        # Mostrar dados brutos
+        for category_name, df in mx_by_year.items():
+            with st.expander(f"📋 {category_name.upper().replace('_', ' ')}", expanded=False):
+                st.dataframe(df, use_container_width=True)
+                
+                # Botão para download
+                csv = df.to_csv(index=False)
+                st.download_button(
+                    label=f"📥 Baixar {category_name.upper()}",
+                    data=csv,
+                    file_name=f"mx_{category_name}_{selected_year}.csv",
+                    mime="text/csv"
+                )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,0 @@
-Metric,Value,Description
-Total Death Records (Raw),"1,556,824",Individual death records in raw data
-Population Data Points,100,Age groups in population data
-Deaths Age Range,0 - 125,Min and max age of deaths
-Population Age Range,1 - 100,Min and max age in population data
-Missing Values (sexo),0,Records with missing sex information
-Missing Values (raca_cor),"40,636",Records with missing race information

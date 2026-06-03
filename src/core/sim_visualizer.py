@@ -237,9 +237,6 @@ def plot_calculated_mx_by_age(
 
     # Calculate mortality rate by age (D/N)
     df_filtered['mortality_rate'] = df_filtered['total_obitos'] / df_filtered['population']
-
-
-
     
     fig = px.line(
         df_filtered,
