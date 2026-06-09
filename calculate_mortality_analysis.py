@@ -9,7 +9,7 @@ This module provides a complete pipeline for:
 4. Generating summary statistics
 5. Exporting results to CSV for visualization
 
-Author: Mortality Analysis System
+Author: Maia
 Date: 2026
 """
 
@@ -29,45 +29,11 @@ logger = logging.getLogger(__name__)
 
 
 # ==================== DATA PATHS ====================
-# Update these paths to your actual data locations
 
-DEATHS_DATA_PATH = "//Projetos2/Wrk/SIM-DATASUS/MICRODADOS/SIM-DATASUS-2010.csv"
-POPULATION_DATA_PATH = "//Projetos2/Wrk/SIM-DATASUS/IBGE/censo2010.csv"
+MICRODADOS_DIR = Path("//Projetos2/Wrk/SIM-DATASUS/MICRODADOS/")
+ELEITORADO_DIR = Path("//Projetos2/Wrk/SIM-DATASUS/ELEITORADO/")
+OUTPUT_DIR = Path("./data/processed")
 
-# Extract source names from file paths
-DEATHS_SOURCE = Path(DEATHS_DATA_PATH).stem  # "SIM-DATASUS"
-POPULATION_SOURCE = Path(POPULATION_DATA_PATH).stem  # "censo2022"
-
-# Extract population source name and year from filename
-def extract_source_and_year(filename):
-    """Extract source name and year from filename like 'censo2022' or 'ibge2010'"""
-    match = re.match(r'([a-zA-Z]+)(\d{4})', filename)
-    if match:
-        source_name, year = match.groups()
-        source_name = source_name.capitalize()  # "censo" -> "Censo"
-        return source_name, year
-    return filename, ""
-
-POP_SOURCE_NAME, POP_YEAR = extract_source_and_year(POPULATION_SOURCE)
-
-# Output directory structure: output/{population_source}/{year}/{category}/
-OUTPUT_DIR = Path("./output")
-OUTPUT_BASE = OUTPUT_DIR / POP_SOURCE_NAME / POP_YEAR
-
-# Create category subdirectories
-DEATHS_DIR = OUTPUT_BASE / "deaths"
-MX_DIR = OUTPUT_BASE / "mx"
-SUMMARY_DIR = OUTPUT_BASE / "summary"
-
-DEATHS_DIR.mkdir(parents=True, exist_ok=True)
-MX_DIR.mkdir(parents=True, exist_ok=True)
-SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
-
-logger.info(f"Output directory: {OUTPUT_DIR}")
-logger.info(f"Deaths source: {DEATHS_SOURCE}")
-logger.info(f"Population source: {POPULATION_SOURCE}")
-logger.info(f"Population source name: {POP_SOURCE_NAME}, Year: {POP_YEAR}")
-logger.info(f"Output path: {OUTPUT_BASE}")
 
 
 # ==================== DATA DICTIONARIES ====================
@@ -99,39 +65,6 @@ DICTIONARY_LABELS = {
         '5': 'Indígena'
     }
 }
-
-
-# ==================== HELPER FUNCTIONS ====================
-
-def get_output_filepath(category, base_name, suffix=""):
-    """
-    Generate output filepath with organized directory structure.
-    
-    Parameters:
-    - category: Category type ('deaths', 'mx', or 'summary')
-    - base_name: Base filename (e.g., "01_deaths_by_age")
-    - suffix: Optional additional suffix (e.g., "masculino")
-    
-    Returns:
-    - Full filepath in organized structure
-    """
-    # Select directory based on category
-    if category == 'deaths':
-        output_dir = DEATHS_DIR
-    elif category == 'mx':
-        output_dir = MX_DIR
-    elif category == 'summary':
-        output_dir = SUMMARY_DIR
-    else:
-        output_dir = OUTPUT_BASE
-    
-    # Generate filename with sources
-    if suffix:
-        filename = f"{base_name}_{suffix}_{DEATHS_SOURCE}_{POPULATION_SOURCE}.csv"
-    else:
-        filename = f"{base_name}_{DEATHS_SOURCE}_{POPULATION_SOURCE}.csv"
-    
-    return output_dir / filename
 
 
 # ==================== UTILITY FUNCTIONS ====================
@@ -330,262 +263,242 @@ def generate_summary_stats(df, name="Dataset"):
     return summary
 
 
-# ==================== MAIN ANALYSIS PIPELINE ====================
+# ==================== ELEITORADO PIPELINE ====================
 
-def run_mortality_analysis():
+# SIM sex codes: 1=Masculino, 2=Feminino
+GENDER_MAP = {"MASCULINO": 1, "FEMININO": 2}
+# SIM race codes: 1=Branca, 2=Preta, 3=Amarela, 4=Parda, 5=Indígena
+RACE_MAP = {"Branca": 1, "Preta": 2, "Amarela": 3, "Parda": 4, "Indígena": 5}
+
+
+def load_eleitorado(path: Path) -> pd.DataFrame:
     """
-    Execute the complete mortality analysis pipeline.
+    Load and clean one ELEITORADO CSV file.
+
+    DS_FAIXA_ETARIA parsing:
+      "N anos"           → int N
+      "100 anos ou mais" → 100
+      other              → dropped (count logged)
+
+    Returns DataFrame with columns:
+        ['SG_UF', 'idade', 'DS_GENERO', 'DS_COR_RACA', 'qt_eleitores']
     """
-    
-    logger.info("="*70)
-    logger.info("MORTALITY ANALYSIS PIPELINE - START")
-    logger.info("="*70)
-    
-    try:
-        # Load data
-        logger.info(f"\nLoading deaths data from: {DEATHS_DATA_PATH}")
-        deaths_data = pd.read_csv(DEATHS_DATA_PATH)
-        logger.info(f"✓ Deaths data loaded: {deaths_data.shape[0]} records, {deaths_data.shape[1]} columns")
-        
-        logger.info(f"\nLoading population data from: {POPULATION_DATA_PATH}")
-        population_data = pd.read_csv(POPULATION_DATA_PATH)
-        logger.info(f"✓ Population data loaded: {population_data.shape[0]} records, {population_data.shape[1]} columns")
-        
-        # Dictionary to store all results
-        results = {}
-        
-        # ==================== 1. DEATHS BY AGE ONLY ====================
-        logger.info("\n" + "="*70)
-        logger.info("CALCULATING: Deaths by Age")
-        logger.info("="*70)
-        
-        deaths_by_age = deaths_by_age_group(deaths_data, age_col='idade')
-        results['deaths_by_age'] = deaths_by_age
-        
-        output_file = get_output_filepath("deaths", "01_deaths_by_age")
-        deaths_by_age.to_csv(output_file, index=False)
-        logger.info(f"✓ Saved to: {output_file}")
-        logger.info(f"  Total deaths: {deaths_by_age['deaths'].sum():,}")
-        logger.info(f"  Age range: {deaths_by_age['idade'].min()} - {deaths_by_age['idade'].max()}")
-        
-        # ==================== 2. DEATHS BY AGE AND SEX ====================
-        logger.info("\n" + "="*70)
-        logger.info("CALCULATING: Deaths by Age and Sex")
-        logger.info("="*70)
-        
-        deaths_by_sex = deaths_by_age_group(
-            deaths_data,
-            age_col='idade',
-            category_col='sexo',
-            category_labels=DICTIONARY_LABELS['sexo'],
-            format='pivot',
-            fill_na=True
+    df = pd.read_csv(path, dtype={"DS_FAIXA_ETARIA": str})
+    original_len = len(df)
+
+    def parse_age(s):
+        if pd.isna(s):
+            return None
+        s = s.strip()
+        if s == "100 anos ou mais":
+            return 100
+        m = re.match(r"^(\d+)\s+anos?$", s, re.IGNORECASE)
+        return int(m.group(1)) if m else None
+
+    df["idade"] = df["DS_FAIXA_ETARIA"].map(parse_age)
+    dropped = df["idade"].isna().sum()
+    if dropped:
+        sample = df.loc[df["idade"].isna(), "DS_FAIXA_ETARIA"].dropna().unique()[:5].tolist()
+        logger.warning(
+            f"load_eleitorado: dropped {dropped}/{original_len} rows with unparseable DS_FAIXA_ETARIA "
+            f"(samples: {sample})"
         )
-        results['deaths_by_sex'] = deaths_by_sex
-        
-        output_file = get_output_filepath("deaths", "02_deaths_by_age_and_sex")
-        deaths_by_sex.to_csv(output_file, index=False)
-        logger.info(f"✓ Saved to: {output_file}")
-        logger.info(f"  Shape: {deaths_by_sex.shape}")
-        logger.info(f"  Categories: {deaths_by_sex.columns.tolist()}")
-        
-        # ==================== 3. DEATHS BY AGE AND RACE ====================
-        logger.info("\n" + "="*70)
-        logger.info("CALCULATING: Deaths by Age and Race/Color")
-        logger.info("="*70)
-        
-        deaths_by_race = deaths_by_age_group(
-            deaths_data,
-            age_col='idade',
-            category_col='raca_cor',
-            category_labels=DICTIONARY_LABELS['raca_cor'],
-            format='pivot',
-            fill_na=True
-        )
-        results['deaths_by_race'] = deaths_by_race
-        
-        output_file = get_output_filepath("deaths", "03_deaths_by_age_and_race")
-        deaths_by_race.to_csv(output_file, index=False)
-        logger.info(f"✓ Saved to: {output_file}")
-        logger.info(f"  Shape: {deaths_by_race.shape}")
-        logger.info(f"  Categories: {deaths_by_race.columns.tolist()}")
-        
-        # ==================== 4. DEATHS BY AGE AND EDUCATION ====================
-        logger.info("\n" + "="*70)
-        logger.info("CALCULATING: Deaths by Age and Education")
-        logger.info("="*70)
-        
-        deaths_by_education = deaths_by_age_group(
-            deaths_data,
-            age_col='idade',
-            category_col='escolaridade',
-            category_labels=DICTIONARY_LABELS['escolaridade'],
-            format='pivot',
-            fill_na=True
-        )
-        results['deaths_by_education'] = deaths_by_education
-        
-        output_file = get_output_filepath("deaths", "04_deaths_by_age_and_education")
-        deaths_by_education.to_csv(output_file, index=False)
-        logger.info(f"✓ Saved to: {output_file}")
-        logger.info(f"  Shape: {deaths_by_education.shape}")
-        logger.info(f"  Categories: {deaths_by_education.columns.tolist()}")
-        
-        # ==================== 5. DEATHS BY AGE AND MARITAL STATUS ====================
-        logger.info("\n" + "="*70)
-        logger.info("CALCULATING: Deaths by Age and Marital Status")
-        logger.info("="*70)
-        
-        deaths_by_marital = deaths_by_age_group(
-            deaths_data,
-            age_col='idade',
-            category_col='estado_civil',
-            category_labels=DICTIONARY_LABELS['estado_civil'],
-            format='pivot',
-            fill_na=True
-        )
-        results['deaths_by_marital'] = deaths_by_marital
-        
-        output_file = get_output_filepath("deaths", "05_deaths_by_age_and_marital_status")
-        deaths_by_marital.to_csv(output_file, index=False)
-        logger.info(f"✓ Saved to: {output_file}")
-        logger.info(f"  Shape: {deaths_by_marital.shape}")
-        logger.info(f"  Categories: {deaths_by_marital.columns.tolist()}")
-        
-        # ==================== 6. MORTALITY RATE (mx) - TOTAL ====================
-        logger.info("\n" + "="*70)
-        logger.info("CALCULATING: Mortality Rate (mx) - Total Population")
-        logger.info("="*70)
-        
-        mx_total = calculate_mx(
-            deaths_data=deaths_by_age,
-            population_data=population_data,
-            deaths_age_col='idade',
-            deaths_count_col='deaths',
-            pop_age_col='Idade',
-            pop_count_col='Total'
-        )
-        results['mx_total'] = mx_total
-        
-        output_file = get_output_filepath("mx", "06_mx_total_population")
-        mx_total.to_csv(output_file, index=False)
-        logger.info(f"✓ Saved to: {output_file}")
-        logger.info(f"  Age range: {mx_total['idade'].min()} - {mx_total['idade'].max()}")
-        logger.info(f"  Mean mx: {mx_total['mx'].mean():.6f}")
-        logger.info(f"  Max mx (at age {mx_total.loc[mx_total['mx'].idxmax(), 'idade']:.0f}): {mx_total['mx'].max():.6f}")
-        
-        # ==================== 7. MORTALITY RATE (mx) BY SEX ====================
-        logger.info("\n" + "="*70)
-        logger.info("CALCULATING: Mortality Rate (mx) by Sex")
-        logger.info("="*70)
-        
-        mx_by_sex = {}
-        for sex_code, sex_name in DICTIONARY_LABELS['sexo'].items():
-            logger.info(f"\n  Processing: {sex_name}")
-            
-            # Prepare deaths data for this sex
-            deaths_sex = deaths_data[deaths_data['sexo'] == float(sex_code)].groupby('idade').size().reset_index(name='deaths')
-            deaths_sex.columns = ['idade', 'deaths']
-            
-            try:
-                mx_sex = calculate_mx(
-                    deaths_data=deaths_sex,
-                    population_data=population_data,
-                    deaths_age_col='idade',
-                    deaths_count_col='deaths',
-                    pop_age_col='Idade',
-                    pop_count_col=sex_name
+    df = df.dropna(subset=["idade"]).copy()
+    df["idade"] = df["idade"].astype(int)
+
+    keep = ["SG_UF", "idade", "DS_GENERO", "DS_COR_RACA", "qt_eleitores"]
+    return df[keep].reset_index(drop=True)
+
+
+def find_matched_years(microdados_dir: Path, eleitorado_dir: Path) -> dict:
+    """
+    Find years with both a SIM-DATASUS-{year}.csv and an eleitorado_{year}.csv.
+    Returns {year: (deaths_path, eleitorado_path)}.
+    """
+    deaths_years = {}
+    for f in microdados_dir.glob("SIM-DATASUS-*.csv"):
+        m = re.search(r"(\d{4})", f.stem)
+        if m:
+            deaths_years[int(m.group(1))] = f
+
+    edf_years = {}
+    for f in eleitorado_dir.glob("eleitorado_*.csv"):
+        m = re.search(r"(\d{4})", f.stem)
+        if m:
+            edf_years[int(m.group(1))] = f
+
+    matched = {
+        year: (deaths_years[year], edf_years[year])
+        for year in sorted(set(deaths_years) & set(edf_years))
+    }
+
+    missing_deaths = sorted(set(edf_years) - set(deaths_years))
+    missing_edf = sorted(set(deaths_years) - set(edf_years))
+    if missing_deaths:
+        logger.warning(f"Eleitorado years with no matching deaths file: {missing_deaths}")
+    if missing_edf:
+        logger.warning(f"Deaths years with no matching eleitorado file: {missing_edf}")
+    if not matched:
+        logger.warning("No matching year pairs found — nothing to process")
+
+    return matched
+
+
+def run_eleitorado_mortality_analysis(
+    microdados_dir: Path = MICRODADOS_DIR,
+    eleitorado_dir: Path = ELEITORADO_DIR,
+    deaths_uf_col: str | None = None,
+):
+    """
+    Compute mx curves for every year that has both a SIM-DATASUS and ELEITORADO file.
+
+    File patterns expected:
+      microdados_dir/SIM-DATASUS-{year}.csv
+      eleitorado_dir/eleitorado_{year}.csv
+
+    Outputs data/processed/{year}/{category}/mx_{label}.csv with columns
+    ['idade', 'deaths', 'population', 'mx'] for each matched year.
+
+    Categories produced:
+      total/           — all deaths, all voters
+      genero/          — one curve per DS_GENERO (MASCULINO, FEMININO)
+      raca_cor/        — one curve per DS_COR_RACA (skips "Não informado")
+      uf/              — one curve per SG_UF (only if deaths_uf_col is given)
+    """
+    logger.info("=" * 70)
+    logger.info("ELEITORADO MORTALITY PIPELINE - START")
+    logger.info("=" * 70)
+
+    matched = find_matched_years(microdados_dir, eleitorado_dir)
+    if not matched:
+        return {}
+
+    all_results = {}
+
+    for year, (deaths_path, edf_path) in matched.items():
+        logger.info(f"\n── Year {year} ─────────────────────────────────────────")
+        logger.info(f"   deaths:     {deaths_path}")
+        logger.info(f"   eleitorado: {edf_path}")
+
+        deaths_data = pd.read_csv(deaths_path)
+        logger.info(f"   ✓ deaths loaded: {deaths_data.shape}")
+
+        edf = load_eleitorado(edf_path)
+        logger.info(f"   ✓ eleitorado loaded: {edf.shape}")
+
+        if edf.empty:
+            logger.warning(f"   ✗ year {year} skipped — eleitorado has no parseable age rows")
+            continue
+
+        out_base = OUTPUT_DIR / str(year)
+        year_results = {}
+
+        # Normalise raca_cor to int for reliable comparison regardless of source dtype
+        has_raca = "raca_cor" in deaths_data.columns
+        if has_raca:
+            deaths_data["raca_cor"] = pd.to_numeric(deaths_data["raca_cor"], errors="coerce")
+
+        has_sexo = "sexo" in deaths_data.columns
+        if has_sexo:
+            deaths_data["sexo"] = pd.to_numeric(deaths_data["sexo"], errors="coerce")
+
+        def mx_curve(deaths_mask, exp_df):
+            d = deaths_data if deaths_mask is None else deaths_data[deaths_mask]
+            d_agg = deaths_by_age_group(d, age_col="idade")
+            if d_agg.empty or exp_df.empty:
+                return None
+            return calculate_mx(
+                deaths_data=d_agg,
+                population_data=exp_df,
+                deaths_age_col="idade",
+                deaths_count_col="deaths",
+                pop_age_col="idade",
+                pop_count_col="qt_eleitores",
+            )
+
+        def save(df, *path_parts):
+            out = out_base.joinpath(*path_parts)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(out, index=False)
+            logger.info(f"    ✓ saved {out}")
+
+        # ── Total ──────────────────────────────────────────────────────────
+        exp_total = edf.groupby("idade", as_index=False)["qt_eleitores"].sum()
+        mx_total = mx_curve(None, exp_total)
+        if mx_total is not None:
+            year_results["total"] = mx_total
+            save(mx_total, "total", "mx_total.csv")
+        else:
+            logger.warning(f"    ✗ total: no overlapping ages")
+
+        # ── Gender ─────────────────────────────────────────────────────────
+        year_results["by_gender"] = {}
+        for gender_label, sexo_code in GENDER_MAP.items():
+            exp_g = (
+                edf[edf["DS_GENERO"] == gender_label]
+                .groupby("idade", as_index=False)["qt_eleitores"].sum()
+            )
+            d_mask = (deaths_data["sexo"] == sexo_code) if has_sexo else None
+            mx = mx_curve(d_mask, exp_g)
+            if mx is not None:
+                year_results["by_gender"][gender_label] = mx
+                safe = gender_label.lower().replace(" ", "_")
+                save(mx, "genero", f"mx_{safe}.csv")
+            else:
+                logger.warning(f"    ✗ gender '{gender_label}': no overlapping ages")
+
+        # ── Race ───────────────────────────────────────────────────────────
+        year_results["by_race"] = {}
+        valid_race_labels = set(RACE_MAP.keys())
+        edf_known_race = edf[edf["DS_COR_RACA"].isin(valid_race_labels)]
+        if edf_known_race.empty:
+            logger.warning(f"    ✗ race skipped — no recognised DS_COR_RACA values (found: {edf['DS_COR_RACA'].unique()[:5].tolist()})")
+        for race_label, raca_code in RACE_MAP.items():
+            exp_r = (
+                edf_known_race[edf_known_race["DS_COR_RACA"] == race_label]
+                .groupby("idade", as_index=False)["qt_eleitores"].sum()
+            )
+            d_mask = (deaths_data["raca_cor"] == raca_code) if has_raca else None
+            mx = mx_curve(d_mask, exp_r)
+            if mx is not None:
+                year_results["by_race"][race_label] = mx
+                safe = race_label.lower().replace(" ", "_")
+                save(mx, "raca_cor", f"mx_{safe}.csv")
+            else:
+                logger.warning(f"    ✗ race '{race_label}': no overlapping ages")
+
+        # ── UF ─────────────────────────────────────────────────────────────
+        year_results["by_uf"] = None
+        if deaths_uf_col and deaths_uf_col in deaths_data.columns:
+            year_results["by_uf"] = {}
+            for uf in sorted(edf["SG_UF"].unique()):
+                exp_uf = (
+                    edf[edf["SG_UF"] == uf]
+                    .groupby("idade", as_index=False)["qt_eleitores"].sum()
                 )
-                mx_by_sex[sex_name] = mx_sex
-                
-                output_file = get_output_filepath("mx", "07_mx_by_sex", sex_name.lower())
-                mx_sex.to_csv(output_file, index=False)
-                logger.info(f"    ✓ Saved to: {output_file}")
-                logger.info(f"    Mean mx: {mx_sex['mx'].mean():.6f}")
-            except Exception as e:
-                logger.warning(f"    ✗ Could not calculate mx for {sex_name}: {str(e)}")
-        
-        results['mx_by_sex'] = mx_by_sex
-        
-        # ==================== 8. MORTALITY RATE (mx) BY RACE ====================
-        logger.info("\n" + "="*70)
-        logger.info("CALCULATING: Mortality Rate (mx) by Race/Color")
-        logger.info("="*70)
-        
-        mx_by_race = {}
-        for race_code, race_name in DICTIONARY_LABELS['raca_cor'].items():
-            logger.info(f"\n  Processing: {race_name}")
-            
-            # Prepare deaths data for this race
-            deaths_race = deaths_data[deaths_data['raca_cor'] == float(race_code)].groupby('idade').size().reset_index(name='deaths')
-            deaths_race.columns = ['idade', 'deaths']
-            
-            try:
-                mx_race = calculate_mx(
-                    deaths_data=deaths_race,
-                    population_data=population_data,
-                    deaths_age_col='idade',
-                    deaths_count_col='deaths',
-                    pop_age_col='Idade',
-                    pop_count_col=race_name
-                )
-                mx_by_race[race_name] = mx_race
-                
-                output_file = get_output_filepath("mx", "08_mx_by_race", race_name.lower())
-                mx_race.to_csv(output_file, index=False)
-                logger.info(f"    ✓ Saved to: {output_file}")
-                logger.info(f"    Mean mx: {mx_race['mx'].mean():.6f}")
-            except Exception as e:
-                logger.warning(f"    ✗ Could not calculate mx for {race_name}: {str(e)}")
-        
-        results['mx_by_race'] = mx_by_race
-        
-        # ==================== 9. SUMMARY STATISTICS ====================
-        logger.info("\n" + "="*70)
-        logger.info("GENERATING: Summary Statistics")
-        logger.info("="*70)
-        
-        summary_list = []
-        
-        for dataset_name, dataset_df in results.items():
-            if dataset_name.startswith('deaths_by_'):
-                try:
-                    summary = generate_summary_stats(dataset_df, dataset_name)
-                    summary_list.append(summary)
-                    logger.info(f"  ✓ {dataset_name}")
-                except Exception as e:
-                    logger.warning(f"  ✗ {dataset_name}: {str(e)}")
-        
-        if summary_list:
-            summary_df = pd.DataFrame(summary_list)
-            output_file = get_output_filepath("summary", "09_summary_statistics")
-            summary_df.to_csv(output_file, index=False)
-            logger.info(f"\n✓ Summary statistics saved to: {output_file}")
-        
-        # ==================== FINAL REPORT ====================
-        logger.info("\n" + "="*70)
-        logger.info("ANALYSIS COMPLETE")
-        logger.info("="*70)
-        logger.info(f"\nOutput directory: {OUTPUT_DIR.absolute()}")
-        logger.info(f"Files created:")
-        
-        for i, file in enumerate(sorted(OUTPUT_DIR.glob("*.csv")), 1):
-            logger.info(f"  {i}. {file.name}")
-        
-        logger.info("\n✓ All results saved and ready for visualization!")
-        
-        return results
-        
-    except Exception as e:
-        logger.error(f"\n✗ ANALYSIS FAILED: {str(e)}", exc_info=True)
-        raise
+                d_mask = deaths_data[deaths_uf_col] == uf
+                mx = mx_curve(d_mask, exp_uf)
+                if mx is not None:
+                    year_results["by_uf"][uf] = mx
+                    save(mx, "uf", f"mx_{uf.lower()}.csv")
+        elif deaths_uf_col:
+            logger.warning(f"deaths_uf_col='{deaths_uf_col}' not in deaths columns — UF curves skipped")
+
+        all_results[year] = year_results
+
+    logger.info("\n✓ Eleitorado pipeline complete")
+    return all_results
 
 
 # ==================== ENTRY POINT ====================
 
 if __name__ == "__main__":
     logger.info(f"Started at: {datetime.now()}")
-    
-    results = run_mortality_analysis()
-    
+
+    results = run_eleitorado_mortality_analysis(
+        microdados_dir=MICRODADOS_DIR,
+        eleitorado_dir=ELEITORADO_DIR,
+        deaths_uf_col="sigla_uf",
+    )
+
     logger.info(f"\nCompleted at: {datetime.now()}")
