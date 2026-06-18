@@ -8,7 +8,6 @@ import plotly.graph_objects as go
 st.set_page_config(
     layout="wide",
     page_title="Análise de Mortalidade SIM-DATASUS",
-    page_icon="📊",
 )
 
 PROCESSED_DIR = Path("./data/processed")
@@ -114,6 +113,39 @@ def plot_mx_lines(dfs: Dict[str, pd.DataFrame], title: str) -> None:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+def plot_deaths_exposure(dfs: Dict[str, pd.DataFrame], title: str) -> None:
+    """Overlay deaths and population by age for all groups in a category."""
+    fig = go.Figure()
+    for i, (label, df) in enumerate(dfs.items()):
+        if "deaths" not in df.columns or "population" not in df.columns or "idade" not in df.columns:
+            continue
+        plot_data = df.sort_values("idade")
+        fig.add_trace(go.Scatter(
+            x=plot_data["idade"],
+            y=plot_data["deaths"],
+            mode="lines",
+            name=f"{label} - Óbitos",
+            line=dict(color=COLOR_PALETTE[i % len(COLOR_PALETTE)], width=1.5, dash="solid"),
+            hovertemplate=f"{label} - Óbitos<br>Idade: %{{x}}<br>Óbitos: %{{y:,}}<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=plot_data["idade"],
+            y=plot_data["population"],
+            mode="lines",
+            name=f"{label} - Exposição",
+            line=dict(color=COLOR_PALETTE[i % len(COLOR_PALETTE)], width=1.5, dash="dot"),
+            hovertemplate=f"{label} - Exposição<br>Idade: %{{x}}<br>Exposição: %{{y:,}}<extra></extra>",
+        ))
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title="Idade (anos)", range=[16, 100]),
+        yaxis=dict(title="Contagem", type="linear"),
+        height=500,
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
 
 # ============================================================================
 # MAIN
@@ -172,6 +204,7 @@ def main():
             cat_label = CATEGORY_LABELS.get(cat, cat.replace("_", " ").title())
             with st.expander(f"📊 {cat_label}", expanded=True):
                 plot_mx_lines(dfs, f"Mx por Idade — {cat_label} ({year_str})")
+                plot_deaths_exposure(dfs, f"Óbitos e Exposição por Idade — {cat_label} ({year_str})")
 
     with tab2:
         st.subheader(f"Estatísticas por Categoria — {year_str}")
