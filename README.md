@@ -33,3 +33,7 @@ Relatório:
 - Até agora temos estimativas que já são suficientes para o calculo mx por sexo e população geral para cada ano. Porém, são retornadas faixas de idade.
 - Não foram encontradas estimativas raciais, somente censo especifíco
 - Visualizações dos dados DATASUS já foram geradas, igualmente calculo mX. Falta tratar como será determinado o denominador (pop geral) para cada subgrupo
+
+
+### ISSUE - Faixas de idade IBGE
+- As faixas de idade não segmentadas por idade exata compremetem as análise. Outra correção deve ser feita na exposição para ter uma curva mais ideal.
