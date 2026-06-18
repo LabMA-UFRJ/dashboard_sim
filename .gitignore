@@ -1,1 +1,6 @@
 *.csv
+
+
+# Ignorar arquivos de dados e imagens gerados
+/data/**
+/hide_me/**
