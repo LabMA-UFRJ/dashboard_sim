@@ -20,8 +20,11 @@ jupyter>=1.0.0
 ipython>=7.0.0
 
 # Optional: Database support
-# sqlalchemy>=1.4.0
+sqlalchemy>=1.4.0
+python-dotenv>=1.0.0
 
 # Optional: Testing
 # pytest>=6.0.0
 # pytest-cov>=2.0.0
+
+oracledb>=3.0.0
