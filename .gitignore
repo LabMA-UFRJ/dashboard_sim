@@ -1,5 +1,5 @@
 *.csv
-
+.env
 
 # Ignorar arquivos de dados e imagens gerados
 /data/**
