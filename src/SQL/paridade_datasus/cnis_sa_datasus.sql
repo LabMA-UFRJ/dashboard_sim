@@ -153,4 +153,4 @@ select
                     WHEN c.sexo ='M' then '1'
                     end
     and c.data_nasc2 = b.data_nasc1
-    and c.data_obito2 = b.data_obito1
+    and c.data_obito2 = b.data_obito1;
