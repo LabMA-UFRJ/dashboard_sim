@@ -1,0 +1,66 @@
+Datasus Com Uf: 692.103 
+Datasus Sem UF: 973.522 
+
+Dados SA_MOR: 344.711.446 
+================================================================
+Funil de paridade DATASUS x CNIS/SA  -  2026-07-28 19:38
+================================================================
+NIVEL                                      LINHAS  CPF DISTINTOS
+DATASUS (base)                         23,641,455              -   (3s)  [microdados_resumido]
+SA cap CNIS cap DATASUS (comUF)           692,103        479,946   (222s)  [cnis_sa_datasus_comUF]
+SA cap CNIS cap DATASUS (semUF)           973,522        628,424   (189s)  [cnis_sa_datasus_semUF]
+SA cap CNIS (intermediario)             3,473,085      2,144,163   (93s)  [cnis_sa_cpf_sexo_datanasc]
+SA (base)                               3,742,211      2,394,187   (19s)  [sa_mor_sob]
+CNIS (base ~126M)                     126,361,700    117,172,209   (233s)  [cnis_sisobi_dt_obito]
+
+Retencao do funil (subconjunto encontrado):
+----------------------------------------------------------------
+  PESSOAS (CPF distintos)
+    SA base ...................      2,394,187
+    -> SA cap CNIS ...........      2,144,163   (89.56% do SA base)
+    -> cap DATASUS (final) ...        628,424   (29.31% do intermediario)
+    FRACAO FINAL / SA base ... 26.25%
+
+  LINHAS (brutas, com duplicacao de join)
+    SA base ...................      3,742,211
+    -> SA cap CNIS ...........      3,473,085   (92.81% do SA base)
+    -> cap DATASUS (final) ...        973,522   (28.03% do intermediario)
+================================================================
+
+================================================================
+INTERPRETACAO  -  qual subconjunto populacional e encontrado
+================================================================
+
+RESULTADO PRINCIPAL
+  O subconjunto encontrado e 628.424 pessoas (CPF distintos) = 26,25%
+  da populacao segurada SA (2.394.187 pessoas).
+
+ONDE A POPULACAO SE PERDE
+  1) Casar com o CNIS custa pouco: 89,56% dos segurados SA sao achados
+     no CNIS (por cpf+sexo+nascimento). Esperado -- o CNIS tem 117,2 mi
+     de CPFs distintos (~toda a populacao economicamente ativa), entao
+     quem tem CPF no SA quase sempre esta la.
+  2) O gargalo e o obito no DATASUS: so 29,31% dos segurados achados no
+     CNIS tem uma morte correspondente nos microdados (por sexo +
+     nascimento + obito). Esperado -- a maioria dos segurados esta VIVA,
+     e o DATASUS (microdados, 23,6 mi de registros) so contem obitos.
+     Logo, esses ~26% sao essencialmente os segurados ja falecidos cuja
+     morte foi pareada.
+
+LINHAS BRUTAS vs. PESSOAS  (duplicacao do join)
+  Join final: 973.522 linhas para 628.424 pessoas -> fator ~1,55.
+  Uma mesma pessoa casa, em media, com mais de um registro de obito do
+  DATASUS, porque a chave de nascimento no lado SA e so ano+mes (YYMM),
+  nao a data completa. Contar LINHAS superestima a populacao em ~55%;
+  para "populacao encontrada" use sempre CPF distinto.
+
+comUF vs. semUF
+  O filtro de UF (uf_residencia = sigla_uf) reduz de 628.424 -> 479.946
+  pessoas (perde 23,6%). Em quase 1/4 dos pares a UF de residencia no
+  CNIS nao bate com a UF do obito no DATASUS: migracao, obito fora do
+  estado de residencia, ou divergencia de cadastro.
+
+SANIDADE (todos OK)
+  comUF <= semUF <= intermediario <= SA base;  cpf distinto <= linhas
+  em toda view.
+================================================================
